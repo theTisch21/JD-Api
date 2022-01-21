@@ -1,0 +1,30 @@
+version: '3.9'
+volumes:
+    data:
+
+networks:
+    redis-net:
+        ipam:
+            config:
+                - subnet: 172.28.0.0/16
+
+services:
+    api:
+        build: .
+        ports:
+            - 3121:3121
+        restart: 'unless-stopped'
+        networks:
+            redis-net:
+                ipv4_address: '172.28.0.8'
+    redis:
+        image: 'redis:alpine'
+        restart: 'unless-stopped'
+        command: 'redis-server --save 60 1 --loglevel warning'
+        ports:
+            - 6379:6379
+        volumes:
+            - 'data:/data'
+        networks:
+            redis-net:
+                ipv4_address: '172.28.0.4'
