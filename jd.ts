@@ -1,8 +1,9 @@
 import { createClient } from 'redis'
 import Hapi from '@hapi/hapi'
 import Joi, { string } from 'joi'
-
-;(async () => {
+import yaml from 'js-yaml'
+import fs from 'fs'
+(async () => {
 	let redisAddr: string
 	let host: string
 
@@ -78,6 +79,7 @@ import Joi, { string } from 'joi'
 
 	//Add an area
 	async function addArea(name: string) {
+		console.log("Adding area " + name)
 		let nextAreaNumber = Number(await database.get('Area:Next'))
 		if (isNaN(nextAreaNumber))
 			throw new Error('Database had invalid next area number')
@@ -92,6 +94,7 @@ import Joi, { string } from 'joi'
 
 	//Add a category
 	async function addCategory(name: string, area: number): Promise<number> {
+		console.log("Adding category " + name)
 		area = roundToLowerTen(area)
 		if(await database.exists(`${area}:Next`) == 0 || await database.exists(`${area}`) == 0) return -2 //Return -2 if the area doesn't exist
 		let nextCategory = Number(await database.get(`${area}:Next`))
@@ -110,6 +113,7 @@ import Joi, { string } from 'joi'
 
 	//Add an item
 	async function addItem(name: string, category: number) {
+		console.log("Adding item " + name)
 		if(await database.exists(`${category}`) == 0 || await database.exists(`${category}:Next`) == 0)  {return -2}
 		let thisIdNumber = Number(await database.get(`${category}:Next`))
 		if(isNaN(thisIdNumber)) throw new Error("Database had invalid next ID number")
@@ -253,13 +257,48 @@ import Joi, { string } from 'joi'
 
 	//Initialize database
 	await databaseConnectPromise
+	await database.flushAll()
 	if ((await database.exists('jd-db')) != 1) {
 		server.log('database', 'Initializing database')
-		database.multi().set('jd-db', 'Initialized').set('Area:Next', 10).exec()
+		await database.set('Area:Next', 10)
+		//Grab initial config from init.yml file
+		let config: any
+		try {
+			config = yaml.load(fs.readFileSync('./init.yml', 'utf-8'))			
+		} catch (e) {
+			config = {}
+		}
+		console.log(config)
+		if(config.init) {		
+
+			for (const area of config.areas) {
+				console.log("Area " + area.name)
+				
+
+				let thisAreaId = await addArea(area.name)
+				
+				for (const category of area.categories) {
+					console.log("Category " + category.name)
+					
+
+					let thisCategoryId = await addCategory(category.name, thisAreaId)
+					
+					for (const item of category.items) {
+						console.log("Item " + item)
+						
+
+						await addItem(item, thisCategoryId)
+					}
+				}
+			}
+			
+		}
+		await database.set('jd-db', 'Initialized')
 	} else {
 		server.log('database', 'Database already initialized')
 	}
 	console.log("Database ready")
+	printDatabase()
 
 	//Start web server
 	await server.start()
